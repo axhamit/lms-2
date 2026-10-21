@@ -1,0 +1,25 @@
+# Quick production-style run:  docker compose up --build -d
+# Put HTTPS (Nginx / Caddy / a cloud load balancer) in front of ports 3000 and 5000.
+services:
+  mongo:
+    image: mongo:7
+    restart: always
+    volumes: [mongo_data:/data/db]
+  backend:
+    build: ./backend
+    restart: always
+    env_file: ./backend/.env
+    environment:
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017/lms
+    depends_on: [mongo]
+    ports: ["5000:5000"]
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:5000/api   # change to your public API URL
+    restart: always
+    ports: ["3000:3000"]
+volumes:
+  mongo_data:
