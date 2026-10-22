@@ -280,6 +280,7 @@ function Classes({ classes, reload, loading }) {
   if (!classes) return <p className="muted">Loading classes…</p>;
 
   const classesWithoutRecordings = classes.filter(c => c.status === 'completed' && !c.hasRecording);
+  const selectedCourse = courses?.find((course) => course._id === f.courseId);
 
   return (
     <>
@@ -289,6 +290,11 @@ function Classes({ classes, reload, loading }) {
           <option value="">Choose course</option>
           {courses?.map((course) => <option key={course._id} value={course._id}>{course.title}</option>)}
         </select>
+        {selectedCourse && (
+          <p className="muted full">
+            {selectedCourse.students?.length || 0} enrolled student(s). Students enrolled in this course automatically receive class access and schedule notifications.
+          </p>
+        )}
         <input placeholder="Class title" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} required />
         <input type="datetime-local" value={f.startTime} onChange={(e) => setF({ ...f, startTime: e.target.value })} required />
         <input type="number" min="5" max="480" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} title="Duration in minutes" placeholder="Minutes" required />
@@ -384,9 +390,11 @@ function Assignments({ assignments, reload, loading }) {
 }
 
 function Users() {
-  const empty = { name: '', email: '', password: '', role: 'student' };
+  const empty = { name: '', email: '', password: '', role: 'student', courseId: '' };
   const [data, setData] = useState({ items: [], total: 0, page: 1, pages: 1 });
   const [f, setF] = useState(empty);
+  const [courses, setCourses] = useState([]);
+  const [courseErr, setCourseErr] = useState('');
   const [err, setErr] = useState('');
   const [notice, setNotice] = useState('');
   const [role, setRole] = useState('');
@@ -395,12 +403,16 @@ function Users() {
 
   const load = useCallback(() => api(`/users?page=${page}&role=${role}&q=${encodeURIComponent(q)}`).then(setData), [page, role, q]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
+  useEffect(() => {
+    api('/courses').then(setCourses).catch((e) => setCourseErr(e.message));
+  }, []);
 
   const add = async (e) => {
     e.preventDefault(); setErr(''); setNotice('');
     try {
       const created = await api('/users', { method: 'POST', body: f });
       setF(empty);
+      api('/courses').then(setCourses).catch((e) => setCourseErr(e.message));
       setNotice(created.emailSent
         ? `Account created and welcome email sent to ${created.email}.`
         : `Account created, but the welcome email could not be sent. Check the backend SMTP settings and logs.`);
@@ -421,9 +433,26 @@ function Users() {
         <input placeholder="Full name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
         <input placeholder="Email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required />
         <input placeholder="Temporary password (8+)" minLength={8} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required />
-        <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
+        <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value, courseId: '' })}>
           <option value="student">Student</option><option value="trainer">Trainer</option><option value="admin">Admin</option>
         </select>
+        {f.role !== 'admin' && (
+          <select
+            value={f.courseId}
+            onChange={(e) => setF({ ...f, courseId: e.target.value })}
+            aria-label={`Assign ${f.role} to a course`}
+          >
+            <option value="">No course assignment</option>
+            {courses
+              .filter((course) => f.role !== 'trainer' || !course.trainer)
+              .map((course) => (
+                <option key={course._id} value={course._id}>
+                  {course.title}{f.role === 'student' ? ` (${course.students?.length || 0} students)` : ''}
+                </option>
+              ))}
+          </select>
+        )}
+        {courseErr && <p className="err full" role="alert">Could not load courses: {courseErr}</p>}
         <button className="btn">Create account</button>
         {err && <p className="err">{err}</p>}
         {notice && <p className={notice.startsWith('Account created and') ? 'ok' : 'err'} role="status">{notice}</p>}

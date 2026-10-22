@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const mongoose = require('mongoose');
 const { User, Course } = require('../models');
 const { protect, allow, wrap } = require('../middleware/auth');
 const { sendMail } = require('../utils/mailer');
@@ -41,11 +42,34 @@ router.get('/options', wrap(async (req, res) => {
 
 router.post('/', wrap(async (req, res) => {
   const { name, email, password, role } = req.body;
+  const courseId = req.body.courseId ? String(req.body.courseId) : '';
   if (!name || !email || typeof password !== 'string' || password.length < 8) return res.status(400).json({ message: 'Name, email and a password of 8+ characters are required' });
   if (!['admin', 'trainer', 'student'].includes(role)) return res.status(400).json({ message: 'Choose a valid role' });
+  if (courseId && !['trainer', 'student'].includes(role)) return res.status(400).json({ message: 'Only students and trainers can be assigned to a course' });
+  let course;
+  if (courseId) {
+    if (!mongoose.isValidObjectId(courseId)) return res.status(400).json({ message: 'Choose a valid course' });
+    course = await Course.findById(courseId);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (role === 'trainer' && course.trainer) return res.status(409).json({ message: 'This course already has a trainer' });
+  }
   if (await User.findOne({ email: String(email).toLowerCase() })) return res.status(400).json({ message: 'Email already exists' });
 
   const user = await User.create({ name, email, password, role, mustChangePassword: true });
+  if (course) {
+    const assignment = role === 'student'
+      ? await Course.updateOne({ _id: course._id }, { $addToSet: { students: user._id } })
+      : await Course.updateOne(
+        { _id: course._id, $or: [{ trainer: { $exists: false } }, { trainer: null }] },
+        { $set: { trainer: user._id } },
+      );
+    if (!assignment.matchedCount || (role === 'trainer' && !assignment.modifiedCount)) {
+      await user.deleteOne();
+      return res.status(role === 'trainer' ? 409 : 404).json({
+        message: role === 'trainer' ? 'This course already has a trainer' : 'Course not found',
+      });
+    }
+  }
 
   // Send welcome email with login URL
   const loginUrl = `${env.clientUrl}/login`;
