@@ -86,8 +86,8 @@ export default function Student() {
               </span>
             </div>
             <p className="muted">Trainer: {c.trainer?.name || 'TBA'}</p>
-            <p className="muted">Learning progress: {c.progress.percent}% · Approved course completion: {c.approvedCourseCompletion}%</p>
-            <Progress value={c.progress.percent} />
+            <p className="muted">Course completion: {c.approvedCourseCompletion}% · Activity progress: {c.progress.percent}%</p>
+            <Progress value={c.approvedCourseCompletion} />
             <div className="course-stats">
               <div className="stat-item">
                 <span className="stat-value">{c.progress.attended}/{c.progress.totalSessions}</span>

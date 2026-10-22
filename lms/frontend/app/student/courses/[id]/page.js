@@ -41,15 +41,15 @@ export default function StudentCourse() {
               <p className="course-trainer">Trainer: {data.course.trainer?.name || 'TBA'}</p>
             </div>
             <div className="course-progress-badge">
-              <span className="progress-badge-text">{data.progress.percent}%</span>
-              <span className="progress-badge-label">Learning progress</span>
+              <span className="progress-badge-text">{data.approvedCourseCompletion}%</span>
+              <span className="progress-badge-label">Course completion</span>
             </div>
           </div>
 
           <div className="card progress-overview-card">
             <div className="progress-overview-header">
-              <h3>Your Learning Progress</h3>
-              <Progress value={data.progress.percent} />
+              <h3>Your Course Completion</h3>
+              <Progress value={data.approvedCourseCompletion} />
             </div>
             <div className="progress-stats">
               <div className="progress-stat">
@@ -70,7 +70,7 @@ export default function StudentCourse() {
               </div>
             </div>
             <div className="row">
-              <b>Approved course completion: {data.approvedCourseCompletion}%</b>
+              <b>Activity progress: {data.progress.percent}%</b>
               <span className={data.approvedCourseCompletion === 100 ? 'pill ok' : 'pill wait'}>
                 {data.approvedCourseCompletion === 100 ? 'Course complete' : 'Awaiting admin approval'}
               </span>
