@@ -2,7 +2,7 @@ const router = require('express').Router();
 const env = require('../config/env');
 const { User, Course, CourseEnrollment, Session, Attendance, Assignment, Submission, Certificate } = require('../models');
 const { protect, allow, wrap } = require('../middleware/auth');
-const { statusOf } = require('../utils/sessions');
+const { statusOf, countsAsPresent } = require('../utils/sessions');
 
 router.use(protect, allow('admin'));
 
@@ -62,12 +62,12 @@ router.get('/dashboard', wrap(async (req, res) => {
       const studentId = String(student._id);
       const attended = courseSessions.filter((session) => {
         const seconds = attendanceByStudentSession.get(`${studentId}:${session._id}`) || 0;
-        return seconds >= (session.durationMinutes * 60 * env.attendMinPercent) / 100;
+        return countsAsPresent(seconds, session);
       }).length;
       const completedClasses = courseSessions.filter((session) => {
         const seconds = attendanceByStudentSession.get(`${studentId}:${session._id}`) || 0;
         return statusOf(session) === 'completed'
-          && seconds >= (session.durationMinutes * 60 * env.attendMinPercent) / 100;
+          && countsAsPresent(seconds, session);
       }).length;
       const assignmentsDone = courseAssignments.filter((assignment) => {
         const submission = submissionsByAssignmentStudent.get(`${assignment._id}:${studentId}`);

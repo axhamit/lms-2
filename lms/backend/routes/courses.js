@@ -4,7 +4,7 @@ const s3 = require('../config/s3');
 const { Course, CourseEnrollment, Session, Attendance, Assignment, Submission, Certificate, Material, User } = require('../models');
 const { protect, allow, wrap } = require('../middleware/auth');
 const { same, isOwner, isMember } = require('../utils/access');
-const { endTime, statusOf, joinable } = require('../utils/sessions');
+const { endTime, statusOf, joinable, countsAsPresent } = require('../utils/sessions');
 const progressFor = require('../utils/progress');
 const jitsi = require('../utils/jitsi');
 const { sendMail } = require('../utils/mailer');
@@ -239,7 +239,7 @@ router.get('/sessions/:sid/attendance', allow('trainer', 'admin'), wrap(async (r
     const a = map.get(String(u._id));
     const secs = Math.round(a?.totalSeconds || 0);
     return { studentId: u.userId, name: u.name, email: u.email, joins: a?.joins || 0, firstJoinedAt: a?.firstJoinedAt || null,
-      minutes: Math.round(secs / 60), percent: pct(secs, s), present: pct(secs, s) >= env.attendMinPercent, measured: a ? !a.manual : true };
+      minutes: Math.round(secs / 60), percent: pct(secs, s), present: countsAsPresent(secs, s), measured: a ? !a.manual : true };
   });
   if (req.query.format === 'csv') {
     const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -401,7 +401,7 @@ router.get('/:id', wrap(async (req, res) => {
     const map = new Map(att.map((a) => [String(a.session), a]));
     out.sessions = sessions.map((s) => {
       const secs = Math.round(map.get(String(s._id))?.totalSeconds || 0);
-      return { ...base(s), myAttendance: { minutes: Math.round(secs / 60), percent: pct(secs, s), counted: pct(secs, s) >= env.attendMinPercent, measured: s.provider === 'jitsi' } };
+      return { ...base(s), myAttendance: { minutes: Math.round(secs / 60), percent: pct(secs, s), counted: countsAsPresent(secs, s), measured: s.provider === 'jitsi' } };
     });
     out.submissions = await Submission.find({ student: u._id, assignment: { $in: assignments.map((a) => a._id) } }).lean();
     out.progress = await progressFor(c._id, u._id);

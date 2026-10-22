@@ -1,6 +1,6 @@
 const env = require('../config/env');
 const { Session, Assignment, Submission, Attendance } = require('../models');
-const { statusOf } = require('./sessions');
+const { statusOf, countsAsPresent } = require('./sessions');
 
 /**
  * Learning progress = (classes attended + assignments done) / (all classes + all assignments)
@@ -19,7 +19,7 @@ module.exports = async function progressFor(courseId, studentId) {
   for (const s of sessions) {
     const secs = attMap.get(String(s._id)) || 0;
     seconds += secs;
-    if (secs >= (s.durationMinutes * 60 * env.attendMinPercent) / 100) {
+    if (countsAsPresent(secs, s)) {
       attended++;
       if (statusOf(s) === 'completed') completedClasses++;
     }
