@@ -187,7 +187,7 @@ router.get('/sessions/assigned', allow('trainer'), wrap(async (req, res) => {
     .populate('course', 'title')
     .sort('startTime')
     .lean();
-  res.json(sessions);
+  res.json(sessions.map((session) => ({ ...session, status: statusOf(session) })));
 }));
 
 router.delete('/sessions/:sid', allow('trainer', 'admin'), wrap(async (req, res) => {

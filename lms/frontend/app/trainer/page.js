@@ -48,22 +48,35 @@ export default function Trainer() {
     <Shell role="trainer">
       <h2>My courses</h2>
       {!!assignedClasses.length && (
-        <>
-          <h2>Classes assigned to me</h2>
-          <div className="scroll"><table>
-            <thead><tr><th>Class</th><th>Course</th><th>Schedule</th><th></th></tr></thead>
-            <tbody>
-              {assignedClasses.map((session) => (
-                <tr key={session._id}>
-                  <td><b>{session.title}</b></td>
-                  <td>{session.course?.title || 'Course removed'}</td>
-                  <td>{fmt(session.startTime)}</td>
-                  <td><Link className="btn small" href={`/trainer/classes/${session._id}`}>Open class</Link></td>
-                </tr>
-              ))}
-            </tbody>
-          </table></div>
-        </>
+        <details className="assigned-classes">
+          <summary>
+            <span>
+              <b>Classes assigned to me</b>
+              <span className="assigned-classes-count">{assignedClasses.length} {assignedClasses.length === 1 ? 'class' : 'classes'}</span>
+            </span>
+            <span className="assigned-classes-toggle">View classes</span>
+          </summary>
+          <div className="assigned-classes-list">
+            {assignedClasses.map((session) => (
+              <article className="assigned-class" key={session._id}>
+                <div className="assigned-class-info">
+                  <div className="assigned-class-title">
+                    <b>{session.title}</b>
+                    <span className={`pill ${session.status === 'completed' ? 'ok' : session.status === 'live' ? 'wait' : 'off'}`}>
+                      {session.status === 'live' ? 'Live now' : session.status}
+                    </span>
+                  </div>
+                  <span className="muted">{session.course?.title || 'Course removed'} · {fmt(session.startTime)}</span>
+                </div>
+                {session.status === 'completed'
+                  ? <span className="assigned-class-complete">Class completed</span>
+                  : <Link className="btn small" href={`/trainer/classes/${session._id}`}>
+                    {session.status === 'live' ? 'Enter class' : 'Open class'}
+                  </Link>}
+              </article>
+            ))}
+          </div>
+        </details>
       )}
       {courses && !courses.length && <EmptyState icon="📚" title="No courses assigned" description="No course is assigned to you yet. Ask your admin." />}
       <div className="cards">

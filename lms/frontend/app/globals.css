@@ -513,6 +513,82 @@ label {
   border-top: 1px solid var(--line-2);
 }
 
+.assigned-classes {
+  margin: 0 0 28px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.assigned-classes summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.assigned-classes summary::-webkit-details-marker { display: none; }
+.assigned-classes summary::marker { content: ''; }
+
+.assigned-classes summary > span:first-child {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.assigned-classes summary b {
+  color: var(--ink-2);
+  font-size: 17px;
+}
+
+.assigned-classes-count,
+.assigned-classes-toggle {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.assigned-classes-toggle::after {
+  content: '⌄';
+  display: inline-block;
+  margin-left: 8px;
+  transition: transform var(--dur) var(--ease);
+}
+
+.assigned-classes[open] .assigned-classes-toggle::after { transform: rotate(180deg); }
+
+.assigned-classes-list { border-top: 1px solid var(--line-2); }
+
+.assigned-class {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 22px;
+}
+
+.assigned-class + .assigned-class { border-top: 1px solid var(--line-2); }
+
+.assigned-class-info { display: grid; gap: 4px; min-width: 0; }
+
+.assigned-class-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.assigned-class-complete {
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .stat-item {
   display: flex;
   flex-direction: column;
@@ -1643,7 +1719,10 @@ tbody tr:hover { background: var(--surface-2); }
 }
 
 @media (max-width: 600px) {
-  .login-side h1 { font-size: 32px; }
+  .login-side h1 { font-size: 32px;     .assigned-classes summary,
+    .assigned-class { padding: 14px 16px; }
+    .assigned-class { align-items: flex-start; flex-direction: column; }
+  }
   .login-side p { font-size: 16px; }
   .form-header h2 { font-size: 28px; }
   .course-card { min-height: auto; }
