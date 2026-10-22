@@ -3,6 +3,7 @@ import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '../../lib/api';
+import PasswordInput from '../../components/PasswordInput';
 
 function Form() {
   const token = useSearchParams().get('token') || '';
@@ -16,7 +17,7 @@ function Form() {
   return (
     <form className="card" onSubmit={submit}>
       <h2>Choose a new password</h2>
-      <label>New password (8+ characters)<input type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+      <label>New password (8+ characters)<PasswordInput minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required /></label>
       <button className="btn">Save password</button>
       {msg && <p className="ok">{msg} <Link href="/login">Log in</Link></p>}{err && <p className="err">{err}</p>}
     </form>

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../components/AuthProvider';
+import PasswordInput from '../../components/PasswordInput';
 
 export default function Login() {
   const { login } = useAuth();
@@ -49,7 +50,7 @@ export default function Login() {
           <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="STU482913 or you@mail.com" autoComplete="username" required />
         </label>
         <label>Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
         </label>
         {err && <p className="err">{err}</p>}
         <button className="btn" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>

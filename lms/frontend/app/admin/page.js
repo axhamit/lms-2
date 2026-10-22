@@ -2,6 +2,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import Shell from '../../components/Shell';
 import { LoadingSpinner, EmptyState } from '../../components/ui';
+import PasswordInput from '../../components/PasswordInput';
 import { api, fmt } from '../../lib/api';
 
 export default function Admin() {
@@ -439,7 +440,7 @@ function Users() {
         <h3>Create account</h3>
         <input placeholder="Full name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
         <input placeholder="Email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required />
-        <input placeholder="Temporary password (8+)" minLength={8} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required />
+        <PasswordInput placeholder="Temporary password (8+)" minLength={8} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" required />
         <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value, courseId: '' })}>
           <option value="student">Student</option><option value="trainer">Trainer</option><option value="admin">Admin</option>
         </select>

@@ -259,6 +259,45 @@ label {
   margin-bottom: 4px;
 }
 
+.password-input {
+  position: relative;
+  display: block;
+}
+
+.password-input input { padding-right: 52px; }
+
+.password-visibility {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.password-visibility:hover {
+  background: var(--surface-2);
+  color: var(--primary);
+}
+
+.password-visibility svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 /* ============================================================
    BUTTONS
    ============================================================ */

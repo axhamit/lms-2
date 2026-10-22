@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Shell from '../../components/Shell';
 import { useAuth } from '../../components/AuthProvider';
 import { api } from '../../lib/api';
+import PasswordInput from '../../components/PasswordInput';
 
 export default function Account() {
   const { user, setSession } = useAuth();
@@ -59,8 +60,8 @@ export default function Account() {
             <h3>Change Password</h3>
             <p className="form-section-desc">Update your password to keep your account secure</p>
           </div>
-          <label>Current password<input type="password" value={f.oldPassword} onChange={(e) => setF({ ...f, oldPassword: e.target.value })} required /></label>
-          <label>New password (8+ characters)<input type="password" minLength={8} value={f.newPassword} onChange={(e) => setF({ ...f, newPassword: e.target.value })} required /></label>
+          <label>Current password<PasswordInput value={f.oldPassword} onChange={(e) => setF({ ...f, oldPassword: e.target.value })} autoComplete="current-password" required /></label>
+          <label>New password (8+ characters)<PasswordInput minLength={8} value={f.newPassword} onChange={(e) => setF({ ...f, newPassword: e.target.value })} autoComplete="new-password" required /></label>
           <button className="btn">Change password</button>
           {msg && <p className="ok">{msg}</p>}{err && <p className="err">{err}</p>}
         </form>
