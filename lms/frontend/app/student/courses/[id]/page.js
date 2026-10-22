@@ -70,7 +70,7 @@ export default function StudentCourse() {
               </div>
             </div>
             <div className="row">
-              <b>Activity progress: {data.progress.percent}%</b>
+              <b>Admin-approved course completion: {data.approvedCourseCompletion}%</b>
               <span className={data.approvedCourseCompletion === 100 ? 'pill ok' : 'pill wait'}>
                 {data.approvedCourseCompletion === 100 ? 'Course complete' : 'Awaiting admin approval'}
               </span>
