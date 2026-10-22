@@ -11,7 +11,7 @@ router.get('/dashboard', wrap(async (req, res) => {
     User.find({ role: 'student' }).select('name email userId active').sort('name').lean(),
     User.countDocuments({ role: 'trainer', active: true }),
     Course.find().populate('trainer', 'name email userId').populate('students', 'name email userId active').sort('title').lean(),
-    Session.find().sort('startTime').lean(),
+    Session.find().populate('trainer', 'name').sort('startTime').lean(),
     Assignment.find().sort('dueDate').lean(),
     Certificate.countDocuments(),
   ]);
@@ -117,7 +117,7 @@ router.get('/dashboard', wrap(async (req, res) => {
       durationMinutes: session.durationMinutes,
       status: statusOf(session),
       course: course ? { _id: course._id, title: course.title } : null,
-      trainer: course?.trainer?.name || 'Not assigned',
+      trainer: session.trainer?.name || course?.trainer?.name || 'Not assigned',
       hasRecording: session.recordings && session.recordings.length > 0,
     };
   });

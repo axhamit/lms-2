@@ -3,18 +3,22 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Shell from '../../components/Shell';
 import { LoadingSpinner, EmptyState } from '../../components/ui';
-import { api } from '../../lib/api';
+import { api, fmt } from '../../lib/api';
 
 export default function Trainer() {
   const [courses, setCourses] = useState(null);
+  const [assignedClasses, setAssignedClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     setLoading(true);
     setError('');
-    api('/courses')
-      .then(setCourses)
+    Promise.all([api('/courses'), api('/courses/sessions/assigned')])
+      .then(([myCourses, myClasses]) => {
+        setCourses(myCourses);
+        setAssignedClasses(myClasses);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -43,6 +47,24 @@ export default function Trainer() {
   return (
     <Shell role="trainer">
       <h2>My courses</h2>
+      {!!assignedClasses.length && (
+        <>
+          <h2>Classes assigned to me</h2>
+          <div className="scroll"><table>
+            <thead><tr><th>Class</th><th>Course</th><th>Schedule</th><th></th></tr></thead>
+            <tbody>
+              {assignedClasses.map((session) => (
+                <tr key={session._id}>
+                  <td><b>{session.title}</b></td>
+                  <td>{session.course?.title || 'Course removed'}</td>
+                  <td>{fmt(session.startTime)}</td>
+                  <td><Link className="btn small" href={`/trainer/classes/${session._id}`}>Open class</Link></td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        </>
+      )}
       {courses && !courses.length && <EmptyState icon="📚" title="No courses assigned" description="No course is assigned to you yet. Ask your admin." />}
       <div className="cards">
         {courses?.map((c) => (

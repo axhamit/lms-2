@@ -1,9 +1,10 @@
 const router = require('express').Router();
+const mongoose = require('mongoose');
 const env = require('../config/env');
 const s3 = require('../config/s3');
 const { Course, CourseEnrollment, Session, Attendance, Assignment, Submission, Certificate, Material, User } = require('../models');
 const { protect, allow, wrap } = require('../middleware/auth');
-const { same, isOwner, isMember } = require('../utils/access');
+const { same, isOwner, isSessionOwner, isMember } = require('../utils/access');
 const { endTime, statusOf, joinable, countsAsPresent } = require('../utils/sessions');
 const progressFor = require('../utils/progress');
 const jitsi = require('../utils/jitsi');
@@ -133,15 +134,18 @@ router.delete('/:id', allow('admin'), wrap(async (req, res) => {
 router.post('/:id/sessions', allow('admin'), wrap(async (req, res) => {
   const c = await Course.findById(req.params.id);
   if (!c) return bad(res, 'Course not found', 404);
-  const { title, startTime, durationMinutes = 60, provider = 'jitsi', meetingLink } = req.body;
+  const { title, startTime, durationMinutes = 60, provider = 'jitsi', meetingLink, trainer } = req.body;
   const start = new Date(startTime);
   const dur = Number(durationMinutes);
   if (!title || isNaN(start)) return bad(res, 'Title and a valid start time are required');
   if (!(dur >= 5 && dur <= 480)) return bad(res, 'Duration must be between 5 and 480 minutes');
+  if (!trainer || !mongoose.isValidObjectId(String(trainer))) return bad(res, 'Choose a valid trainer');
+  const assignedTrainer = await User.findOne({ _id: trainer, role: 'trainer', active: true }).select('_id').lean();
+  if (!assignedTrainer) return bad(res, 'Choose an active trainer');
   const external = provider === 'external';
   if (external && !/^https?:\/\/\S+$/i.test(meetingLink || '')) return bad(res, 'Enter a valid meeting link starting with https://');
   const session = await Session.create({
-    course: c._id, title, startTime: start, durationMinutes: dur, createdBy: req.user._id,
+    course: c._id, trainer: assignedTrainer._id, title, startTime: start, durationMinutes: dur, createdBy: req.user._id,
     provider: external ? 'external' : 'jitsi', meetingLink: external ? meetingLink : undefined, roomName: external ? undefined : jitsi.newRoom(),
   });
 
@@ -178,9 +182,17 @@ router.post('/:id/sessions', allow('admin'), wrap(async (req, res) => {
   res.status(201).json(session);
 }));
 
+router.get('/sessions/assigned', allow('trainer'), wrap(async (req, res) => {
+  const sessions = await Session.find({ trainer: req.user._id })
+    .populate('course', 'title')
+    .sort('startTime')
+    .lean();
+  res.json(sessions);
+}));
+
 router.delete('/sessions/:sid', allow('trainer', 'admin'), wrap(async (req, res) => {
   const { s, c } = await sessionAndCourse(req.params.sid);
-  if (!s || !isOwner(req.user, c)) return bad(res, 'Not allowed', 403);
+  if (!s || !isSessionOwner(req.user, c, s)) return bad(res, 'Not allowed', 403);
   await Promise.all([Attendance.deleteMany({ session: s._id }), ...s.recordings.map((r) => s3.remove(r.key))]);
   await s.deleteOne();
   res.json({ message: 'Deleted' });
@@ -195,7 +207,7 @@ const roomPayload = (s, c, user, moderator) => ({
 // Trainer / admin enters the room (moderator)
 router.get('/sessions/:sid/room', allow('trainer', 'admin'), wrap(async (req, res) => {
   const { s, c } = await sessionAndCourse(req.params.sid);
-  if (!s || !isOwner(req.user, c)) return bad(res, 'Not allowed', 403);
+  if (!s || !isSessionOwner(req.user, c, s)) return bad(res, 'Not allowed', 403);
   res.json(roomPayload(s, c, req.user, true));
 }));
 
@@ -232,7 +244,7 @@ router.post('/sessions/:sid/leave', allow('student'), track);
 // Attendance report for one class (JSON, or CSV with ?format=csv)
 router.get('/sessions/:sid/attendance', allow('trainer', 'admin'), wrap(async (req, res) => {
   const { s, c } = await sessionAndCourse(req.params.sid);
-  if (!s || !isOwner(req.user, c)) return bad(res, 'Not allowed', 403);
+  if (!s || !isSessionOwner(req.user, c, s)) return bad(res, 'Not allowed', 403);
   const [students, att] = await Promise.all([User.find({ _id: { $in: c.students } }).select('name userId email').sort('name').lean(), Attendance.find({ session: s._id }).lean()]);
   const map = new Map(att.map((a) => [String(a.student), a]));
   const rows = students.map((u) => {
@@ -254,7 +266,7 @@ router.get('/sessions/:sid/attendance', allow('trainer', 'admin'), wrap(async (r
 /* ---- recordings (files live in S3) ---- */
 router.post('/sessions/:sid/recordings', allow('trainer', 'admin'), s3.require, wrap(async (req, res) => {
   const { s, c } = await sessionAndCourse(req.params.sid);
-  if (!s || !isOwner(req.user, c)) return bad(res, 'Not allowed', 403);
+  if (!s || !isSessionOwner(req.user, c, s)) return bad(res, 'Not allowed', 403);
   const f = req.body.file || {};
   if (!String(f.key).startsWith(`courses/${c._id}/recordings/${s._id}/`)) return bad(res, 'Invalid file');
   const size = await s3.verify(f.key, LIMITS.recording);
@@ -265,7 +277,7 @@ router.post('/sessions/:sid/recordings', allow('trainer', 'admin'), s3.require, 
 
 router.delete('/sessions/:sid/recordings', allow('trainer', 'admin'), wrap(async (req, res) => {
   const { s, c } = await sessionAndCourse(req.params.sid);
-  if (!s || !isOwner(req.user, c)) return bad(res, 'Not allowed', 403);
+  if (!s || !isSessionOwner(req.user, c, s)) return bad(res, 'Not allowed', 403);
   const key = String(req.query.key || '');
   if (!s.recordings.some((r) => r.key === key)) return bad(res, 'Recording not found', 404);
   s.recordings = s.recordings.filter((r) => r.key !== key);

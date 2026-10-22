@@ -246,9 +246,11 @@ function Classes({ classes, reload, loading }) {
   const [err, setErr] = useState('');
   const [scheduleErr, setScheduleErr] = useState('');
   const [courses, setCourses] = useState(null);
-  const [f, setF] = useState({ courseId: '', title: '', startTime: '', durationMinutes: 60, provider: 'jitsi', meetingLink: '' });
+  const [trainers, setTrainers] = useState([]);
+  const [f, setF] = useState({ courseId: '', trainer: '', title: '', startTime: '', durationMinutes: 60, provider: 'jitsi', meetingLink: '' });
   useEffect(() => {
     api('/courses').then(setCourses).catch((e) => setScheduleErr(e.message));
+    api('/users/options?role=trainer').then(setTrainers).catch((e) => setScheduleErr(e.message));
   }, []);
   const schedule = async (e) => {
     e.preventDefault();
@@ -258,7 +260,7 @@ function Classes({ classes, reload, loading }) {
         method: 'POST',
         body: { ...f, startTime: new Date(f.startTime).toISOString(), durationMinutes: Number(f.durationMinutes) },
       });
-      setF({ courseId: '', title: '', startTime: '', durationMinutes: 60, provider: 'jitsi', meetingLink: '' });
+      setF({ courseId: '', trainer: '', title: '', startTime: '', durationMinutes: 60, provider: 'jitsi', meetingLink: '' });
       await reload();
     } catch (x) { setScheduleErr(x.message); }
   };
@@ -295,6 +297,10 @@ function Classes({ classes, reload, loading }) {
             {selectedCourse.students?.length || 0} enrolled student(s). Students enrolled in this course automatically receive class access and schedule notifications.
           </p>
         )}
+        <select value={f.trainer} onChange={(e) => setF({ ...f, trainer: e.target.value })} required>
+          <option value="">Choose trainer for this class</option>
+          {trainers.map((trainer) => <option key={trainer._id} value={trainer._id}>{trainer.name} ({trainer.userId})</option>)}
+        </select>
         <input placeholder="Class title" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} required />
         <input type="datetime-local" value={f.startTime} onChange={(e) => setF({ ...f, startTime: e.target.value })} required />
         <input type="number" min="5" max="480" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} title="Duration in minutes" placeholder="Minutes" required />
@@ -306,6 +312,7 @@ function Classes({ classes, reload, loading }) {
           <input className="full" placeholder="https://…" value={f.meetingLink} onChange={(e) => setF({ ...f, meetingLink: e.target.value })} required />
         )}
         <button className="btn" disabled={!courses?.length}>Schedule class</button>
+        {!trainers.length && !scheduleErr && <p className="muted">Create an active trainer account before scheduling a class.</p>}
         {scheduleErr && <p className="err">{scheduleErr}</p>}
         {courses && !courses.length && !scheduleErr && <p className="muted">Create a course before scheduling a class.</p>}
       </form>

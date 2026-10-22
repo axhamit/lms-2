@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const s3 = require('../config/s3');
 const { Course, Assignment, Session } = require('../models');
 const { protect, wrap } = require('../middleware/auth');
-const { isOwner, isMember } = require('../utils/access');
+const { isOwner, isSessionOwner, isMember } = require('../utils/access');
 
 router.use(protect, s3.require);
 const bad = (res, msg, code = 400) => res.status(code).json({ message: msg });
@@ -25,24 +25,26 @@ router.post('/presign', wrap(async (req, res) => {
   const rule = RULES[purpose];
   if (!rule) return bad(res, 'Invalid upload type');
   const c = await Course.findById(courseId);
-  if (!c || !isMember(req.user, c)) return bad(res, 'Not allowed', 403);
+  if (!c) return bad(res, 'Not allowed', 403);
   if (!rule.types.includes(contentType)) return bad(res, 'This file type is not allowed');
   if (!(size > 0 && size <= rule.max)) return bad(res, `File must be smaller than ${Math.round(rule.max / MB)} MB`);
 
   let prefix;
   if (purpose === 'submission') {
+    if (!isMember(req.user, c)) return bad(res, 'Not allowed', 403);
     if (req.user.role !== 'student') return bad(res, 'Only students submit assignments', 403);
     const a = await Assignment.findOne({ _id: refId, course: c._id });
     if (!a) return bad(res, 'Assignment not found', 404);
     prefix = `courses/${c._id}/submissions/${a._id}/${req.user._id}/`;
+  } else if (purpose === 'recording') {
+    const s = await Session.findOne({ _id: refId, course: c._id });
+    if (!s) return bad(res, 'Class not found', 404);
+    if (!isSessionOwner(req.user, c, s)) return bad(res, 'Only the assigned trainer can upload this', 403);
+    prefix = `courses/${c._id}/recordings/${s._id}/`;
   } else {
+    if (!isMember(req.user, c)) return bad(res, 'Not allowed', 403);
     if (!isOwner(req.user, c)) return bad(res, 'Only the trainer can upload this', 403);
-    if (purpose === 'material') prefix = `courses/${c._id}/materials/`;
-    else {
-      const s = await Session.findOne({ _id: refId, course: c._id });
-      if (!s) return bad(res, 'Class not found', 404);
-      prefix = `courses/${c._id}/recordings/${s._id}/`;
-    }
+    prefix = `courses/${c._id}/materials/`;
   }
   const key = `${prefix}${crypto.randomUUID()}-${safeName(filename)}`;
   res.json({ key, url: await s3.presignPut(key, contentType), headers: { 'Content-Type': contentType } });
@@ -54,7 +56,11 @@ router.get('/download', wrap(async (req, res) => {
   const p = key.split('/');
   if (p[0] !== 'courses' || p.length < 4) return bad(res, 'Invalid file');
   const c = await Course.findById(p[1]);
-  if (!c || !isMember(req.user, c)) return bad(res, 'Not allowed', 403);
+  if (!c) return bad(res, 'Not allowed', 403);
+  if (p[2] === 'recordings') {
+    const s = await Session.findOne({ _id: p[3], course: c._id });
+    if (!s || (!isMember(req.user, c) && !isSessionOwner(req.user, c, s))) return bad(res, 'Not allowed', 403);
+  } else if (!isMember(req.user, c)) return bad(res, 'Not allowed', 403);
   if (p[2] === 'submissions' && req.user.role === 'student' && p[4] !== String(req.user._id)) return bad(res, 'Not allowed', 403);
   const filename = p[p.length - 1].replace(/^[0-9a-f-]{36}-/, '');
   res.json({ url: await s3.presignGet(key, { filename, inline: req.query.inline === '1' }) });
@@ -65,13 +71,14 @@ const ownedKey = async (req, key) => {
   const p = String(key || '').split('/');
   if (p[0] !== 'courses' || p[2] !== 'recordings') return null;
   const c = await Course.findById(p[1]);
-  return c && isOwner(req.user, c) ? { c, sessionId: p[3] } : null;
+  const s = await Session.findOne({ _id: p[3], course: p[1] });
+  return c && s && isSessionOwner(req.user, c, s) ? { c, sessionId: p[3] } : null;
 };
 
 router.post('/multipart/start', wrap(async (req, res) => {
   const s = await Session.findById(req.body.sessionId);
   const c = s && (await Course.findById(s.course));
-  if (!c || !isOwner(req.user, c)) return bad(res, 'Not allowed', 403);
+  if (!c || !isSessionOwner(req.user, c, s)) return bad(res, 'Not allowed', 403);
   const key = `courses/${c._id}/recordings/${s._id}/${crypto.randomUUID()}-class-recording.webm`;
   res.json({ key, uploadId: await s3.mpStart(key, 'video/webm') });
 }));

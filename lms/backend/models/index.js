@@ -53,6 +53,7 @@ courseEnrollmentSchema.index({ course: 1, student: 1 }, { unique: true });
 /* ---------- Live class ---------- */
 const sessionSchema = new Schema({
   course: ref('Course', { required: true }),
+  trainer: ref('User', { index: true }),
   title: { type: String, required: true, maxlength: 150 },
   startTime: { type: Date, required: true },
   durationMinutes: { type: Number, default: 60, min: 5, max: 480 },
