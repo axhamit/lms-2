@@ -42,6 +42,14 @@ const courseSchema = new Schema({
 }, { timestamps: true });
 courseSchema.index({ students: 1 });
 
+/* ---------- Course enrollment approval ---------- */
+const courseEnrollmentSchema = new Schema({
+  course: ref('Course', { required: true }),
+  student: ref('User', { required: true }),
+  approvedCourseCompletion: { type: Number, default: 0, min: 0, max: 100 },
+}, { timestamps: true });
+courseEnrollmentSchema.index({ course: 1, student: 1 }, { unique: true });
+
 /* ---------- Live class ---------- */
 const sessionSchema = new Schema({
   course: ref('Course', { required: true }),
@@ -114,6 +122,7 @@ certificateSchema.index({ student: 1, course: 1 }, { unique: true });
 module.exports = {
   User: mongoose.model('User', userSchema),
   Course: mongoose.model('Course', courseSchema),
+  CourseEnrollment: mongoose.model('CourseEnrollment', courseEnrollmentSchema),
   Session: mongoose.model('Session', sessionSchema),
   Attendance: mongoose.model('Attendance', attendanceSchema),
   Assignment: mongoose.model('Assignment', assignmentSchema),

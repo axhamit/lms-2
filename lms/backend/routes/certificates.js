@@ -2,9 +2,8 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const env = require('../config/env');
-const { Certificate, Course } = require('../models');
+const { Certificate, Course, CourseEnrollment, User } = require('../models');
 const { protect, allow, wrap } = require('../middleware/auth');
-const progressFor = require('../utils/progress');
 
 // Public: anyone can verify a certificate by its ID
 router.get('/verify/:certId', wrap(async (req, res) => {
@@ -19,14 +18,26 @@ router.get('/mine', allow('student'), wrap(async (req, res) => {
   res.json(await Certificate.find({ student: req.user._id }).populate('course', 'title').sort('-issuedAt'));
 }));
 
-// Only after the course is 100% complete
-router.post('/generate/:courseId', allow('student'), wrap(async (req, res) => {
-  const course = await Course.findById(req.params.courseId);
-  if (!course || !course.students.some((s) => String(s) === String(req.user._id))) return res.status(403).json({ message: 'You are not enrolled in this course' });
-  const p = await progressFor(course._id, req.user._id);
-  if (!p.completed) return res.status(400).json({ message: `Course not complete yet (${p.percent}%). Attend all classes and finish all assignments.` });
-  let cert = await Certificate.findOne({ student: req.user._id, course: course._id });
-  if (!cert) cert = await Certificate.create({ student: req.user._id, course: course._id, certId: 'CERT-' + crypto.randomBytes(4).toString('hex').toUpperCase() });
+// Only admins can issue a certificate after approving course completion.
+router.post('/generate/:courseId/:studentId', allow('admin'), wrap(async (req, res) => {
+  const [course, student] = await Promise.all([
+    Course.findById(req.params.courseId).select('students'),
+    User.findOne({ _id: req.params.studentId, role: 'student' }).select('_id'),
+  ]);
+  if (!course || !student || !course.students.some((id) => String(id) === String(student._id))) {
+    return res.status(404).json({ message: 'Enrolled student not found for this course' });
+  }
+  const enrollment = await CourseEnrollment.findOne({ course: course._id, student: student._id }).select('approvedCourseCompletion').lean();
+  if (enrollment?.approvedCourseCompletion !== 100) {
+    return res.status(400).json({ message: 'Certificate generation requires 100% admin-approved course completion' });
+  }
+  const existing = await Certificate.findOne({ student: student._id, course: course._id }).select('_id');
+  if (existing) return res.status(409).json({ message: 'A certificate has already been issued for this student and course' });
+  const cert = await Certificate.create({
+    student: student._id,
+    course: course._id,
+    certId: 'CERT-' + crypto.randomBytes(4).toString('hex').toUpperCase(),
+  });
   res.json(cert);
 }));
 

@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const env = require('../config/env');
 const s3 = require('../config/s3');
-const { Course, Session, Attendance, Assignment, Submission, Certificate, Material, User } = require('../models');
+const { Course, CourseEnrollment, Session, Attendance, Assignment, Submission, Certificate, Material, User } = require('../models');
 const { protect, allow, wrap } = require('../middleware/auth');
 const { same, isOwner, isMember } = require('../utils/access');
 const { endTime, statusOf, joinable } = require('../utils/sessions');
@@ -28,7 +28,21 @@ router.get('/', wrap(async (req, res) => {
   let query = Course.find(q).populate('trainer', 'name email userId').sort('-createdAt');
   query = u.role === 'student' ? query.select('-students') : query.populate('students', 'name email userId');
   let courses = await query.lean();
-  if (u.role === 'student') courses = await Promise.all(courses.map(async (c) => ({ ...c, progress: await progressFor(c._id, u._id) })));
+  if (u.role === 'student' && courses.length) {
+    const courseIds = courses.map((course) => course._id);
+    const [enrollments, certificates] = await Promise.all([
+      CourseEnrollment.find({ course: { $in: courseIds }, student: u._id }).select('course approvedCourseCompletion').lean(),
+      Certificate.find({ course: { $in: courseIds }, student: u._id }).select('course certId issuedAt').lean(),
+    ]);
+    const approvalByCourse = new Map(enrollments.map((enrollment) => [String(enrollment.course), enrollment.approvedCourseCompletion]));
+    const certificateByCourse = new Map(certificates.map((certificate) => [String(certificate.course), certificate]));
+    courses = await Promise.all(courses.map(async (course) => ({
+      ...course,
+      progress: await progressFor(course._id, u._id),
+      approvedCourseCompletion: approvalByCourse.get(String(course._id)) || 0,
+      certificate: certificateByCourse.get(String(course._id)) || null,
+    })));
+  }
   res.json(courses);
 }));
 
@@ -109,7 +123,8 @@ router.delete('/:id', allow('admin'), wrap(async (req, res) => {
   const ass = await Assignment.find({ course: req.params.id }).select('_id');
   await Submission.deleteMany({ assignment: { $in: ass.map((a) => a._id) } });
   await Promise.all([Assignment.deleteMany({ course: req.params.id }), Session.deleteMany({ course: req.params.id }), Attendance.deleteMany({ course: req.params.id }),
-    Material.deleteMany({ course: req.params.id }), Certificate.deleteMany({ course: req.params.id }), Course.findByIdAndDelete(req.params.id)]);
+    Material.deleteMany({ course: req.params.id }), Certificate.deleteMany({ course: req.params.id }),
+    CourseEnrollment.deleteMany({ course: req.params.id }), Course.findByIdAndDelete(req.params.id)]);
   s3.deletePrefix(`courses/${req.params.id}/`).catch((e) => console.error('S3 cleanup failed', e.message));
   res.json({ message: 'Deleted' });
 }));
@@ -390,12 +405,20 @@ router.get('/:id', wrap(async (req, res) => {
     });
     out.submissions = await Submission.find({ student: u._id, assignment: { $in: assignments.map((a) => a._id) } }).lean();
     out.progress = await progressFor(c._id, u._id);
+    const enrollment = await CourseEnrollment.findOne({ course: c._id, student: u._id }).select('approvedCourseCompletion').lean();
+    out.approvedCourseCompletion = enrollment?.approvedCourseCompletion || 0;
     out.certificate = await Certificate.findOne({ student: u._id, course: c._id }).lean();
   } else {
     const counts = await Attendance.aggregate([{ $match: { course: c._id } }, { $group: { _id: '$session', n: { $sum: 1 } } }]);
     const cm = new Map(counts.map((x) => [String(x._id), x.n]));
     out.sessions = sessions.map((s) => ({ ...base(s), meetingLink: s.meetingLink, attendeeCount: cm.get(String(s._id)) || 0 }));
-    out.studentsProgress = await Promise.all(c.students.map(async (s) => ({ student: s, progress: await progressFor(c._id, s._id) })));
+    const enrollments = await CourseEnrollment.find({ course: c._id }).select('student approvedCourseCompletion').lean();
+    const approvalByStudent = new Map(enrollments.map((enrollment) => [String(enrollment.student), enrollment.approvedCourseCompletion]));
+    out.studentsProgress = await Promise.all(c.students.map(async (s) => ({
+      student: s,
+      progress: await progressFor(c._id, s._id),
+      approvedCourseCompletion: approvalByStudent.get(String(s._id)) || 0,
+    })));
   }
   res.json(out);
 }));

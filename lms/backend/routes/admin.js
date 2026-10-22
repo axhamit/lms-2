@@ -1,13 +1,13 @@
 const router = require('express').Router();
 const env = require('../config/env');
-const { User, Course, Session, Attendance, Assignment, Submission, Certificate } = require('../models');
+const { User, Course, CourseEnrollment, Session, Attendance, Assignment, Submission, Certificate } = require('../models');
 const { protect, allow, wrap } = require('../middleware/auth');
 const { statusOf } = require('../utils/sessions');
 
 router.use(protect, allow('admin'));
 
 router.get('/dashboard', wrap(async (req, res) => {
-  const [students, trainers, courses, sessions, assignments, certificates] = await Promise.all([
+  const [students, trainers, courses, sessions, assignments, certificateCount] = await Promise.all([
     User.find({ role: 'student' }).select('name email userId active').sort('name').lean(),
     User.countDocuments({ role: 'trainer', active: true }),
     Course.find().populate('trainer', 'name email userId').populate('students', 'name email userId active').sort('title').lean(),
@@ -17,12 +17,14 @@ router.get('/dashboard', wrap(async (req, res) => {
   ]);
   const courseIds = courses.map((course) => course._id);
   const assignmentIds = assignments.map((assignment) => assignment._id);
-  const [attendance, submissions] = await Promise.all([
+  const [attendance, submissions, enrollments, courseCertificates] = await Promise.all([
     Attendance.find({ course: { $in: courseIds } }).select('course session student totalSeconds').lean(),
     Submission.find({ assignment: { $in: assignmentIds } })
       .select('assignment student submittedAt marks gradedAt')
       .populate('student', 'name email userId')
       .lean(),
+    CourseEnrollment.find({ course: { $in: courseIds } }).select('course student approvedCourseCompletion').lean(),
+    Certificate.find({ course: { $in: courseIds } }).select('course student certId issuedAt').lean(),
   ]);
 
   const sessionsByCourse = new Map();
@@ -30,6 +32,12 @@ router.get('/dashboard', wrap(async (req, res) => {
   const coursesById = new Map(courses.map((course) => [String(course._id), course]));
   const attendanceByStudentSession = new Map();
   const submissionsByAssignmentStudent = new Map();
+  const approvalByCourseStudent = new Map(enrollments.map((item) => [
+    `${item.course}:${item.student}`, item.approvedCourseCompletion,
+  ]));
+  const certificateByCourseStudent = new Map(courseCertificates.map((item) => [
+    `${item.course}:${item.student}`, item,
+  ]));
   const studentCourses = new Map(students.map((student) => [String(student._id), []]));
 
   for (const session of sessions) {
@@ -47,7 +55,6 @@ router.get('/dashboard', wrap(async (req, res) => {
     submissionsByAssignmentStudent.set(`${submission.assignment}:${submission.student?._id}`, submission);
   }
 
-  const courseProgress = new Map();
   for (const course of courses) {
     const courseSessions = sessionsByCourse.get(String(course._id)) || [];
     const courseAssignments = assignmentsByCourse.get(String(course._id)) || [];
@@ -56,6 +63,11 @@ router.get('/dashboard', wrap(async (req, res) => {
       const attended = courseSessions.filter((session) => {
         const seconds = attendanceByStudentSession.get(`${studentId}:${session._id}`) || 0;
         return seconds >= (session.durationMinutes * 60 * env.attendMinPercent) / 100;
+      }).length;
+      const completedClasses = courseSessions.filter((session) => {
+        const seconds = attendanceByStudentSession.get(`${studentId}:${session._id}`) || 0;
+        return statusOf(session) === 'completed'
+          && seconds >= (session.durationMinutes * 60 * env.attendMinPercent) / 100;
       }).length;
       const assignmentsDone = courseAssignments.filter((assignment) => {
         const submission = submissionsByAssignmentStudent.get(`${assignment._id}:${studentId}`);
@@ -66,18 +78,21 @@ router.get('/dashboard', wrap(async (req, res) => {
       const total = courseSessions.length + courseAssignments.length;
       const progress = {
         attended,
+        completedClasses,
         totalSessions: courseSessions.length,
         assignmentsDone,
         totalAssignments: courseAssignments.length,
         percent: total ? Math.round(((attended + assignmentsDone) / total) * 100) : 0,
       };
-      progress.completed = total > 0 && progress.percent === 100;
-      courseProgress.set(`${course._id}:${studentId}`, progress);
+      const enrollmentKey = `${course._id}:${studentId}`;
+      const certificate = certificateByCourseStudent.get(enrollmentKey);
       studentCourses.get(studentId)?.push({
         _id: course._id,
         title: course.title,
         trainer: course.trainer?.name || 'Not assigned',
         ...progress,
+        approvedCourseCompletion: approvalByCourseStudent.get(enrollmentKey) || 0,
+        certificate: certificate ? { certId: certificate.certId, issuedAt: certificate.issuedAt } : null,
         assignmentStatuses: courseAssignments.map((assignment) => {
           const submission = submissionsByAssignmentStudent.get(`${assignment._id}:${studentId}`);
           let status = 'Not submitted';
@@ -145,7 +160,7 @@ router.get('/dashboard', wrap(async (req, res) => {
       courses: courses.length,
       classes: sessions.length,
       upcoming: sessions.filter((session) => new Date(session.startTime) > now).length,
-      certificates,
+      certificates: certificateCount,
       toGrade: submissions.filter((submission) => !submission.gradedAt).length,
     },
     students: students.map((student) => ({
@@ -157,11 +172,35 @@ router.get('/dashboard', wrap(async (req, res) => {
       title: course.title,
       trainer: course.trainer?.name || 'Not assigned',
       students: course.students.length,
-      completed: course.students.filter((student) => courseProgress.get(`${course._id}:${student._id}`)?.completed).length,
+      completed: course.students.filter((student) => (
+        (approvalByCourseStudent.get(`${course._id}:${student._id}`) || 0) === 100
+      )).length,
     })),
     classes: classesReport,
     assignments: assignmentsReport,
   });
+}));
+
+router.patch('/courses/:courseId/students/:studentId/completion', wrap(async (req, res) => {
+  const { approvedCourseCompletion } = req.body;
+  if (typeof approvedCourseCompletion !== 'number' || !Number.isFinite(approvedCourseCompletion)
+    || approvedCourseCompletion < 0 || approvedCourseCompletion > 100) {
+    return res.status(400).json({ message: 'Approved course completion must be a number from 0 to 100' });
+  }
+  const [course, student] = await Promise.all([
+    Course.findById(req.params.courseId).select('students'),
+    User.findOne({ _id: req.params.studentId, role: 'student' }).select('_id'),
+  ]);
+  if (!course) return res.status(404).json({ message: 'Course not found' });
+  if (!student || !course.students.some((id) => String(id) === String(student._id))) {
+    return res.status(404).json({ message: 'Enrolled student not found' });
+  }
+  const enrollment = await CourseEnrollment.findOneAndUpdate(
+    { course: course._id, student: student._id },
+    { $set: { approvedCourseCompletion } },
+    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
+  ).lean();
+  res.json({ approvedCourseCompletion: enrollment.approvedCourseCompletion });
 }));
 
 router.get('/stats', wrap(async (req, res) => {

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Shell from '../../../../components/Shell';
-import { Progress, StatusTag, LoadingSpinner } from '../../../../components/ui';
+import { Progress, StatusTag, LoadingSpinner, EmptyState } from '../../../../components/ui';
 import Recordings from '../../../../components/Recordings';
 import Materials from '../../../../components/Materials';
 import { api, uploadFile, openFile, downloadCertificate, fmt, fmtSize } from '../../../../lib/api';
@@ -24,11 +24,6 @@ export default function StudentCourse() {
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
-  const getCert = async () => {
-    try { const c = await api(`/certificates/generate/${id}`, { method: 'POST' }); await load(); await downloadCertificate(c.certId); }
-    catch (x) { alert(x.message); }
-  };
-
   return (
     <Shell role="student">
       <div className="course-detail-header">
@@ -47,19 +42,23 @@ export default function StudentCourse() {
             </div>
             <div className="course-progress-badge">
               <span className="progress-badge-text">{data.progress.percent}%</span>
-              <span className="progress-badge-label">Complete</span>
+              <span className="progress-badge-label">Learning progress</span>
             </div>
           </div>
 
           <div className="card progress-overview-card">
             <div className="progress-overview-header">
-              <h3>Your Progress</h3>
+              <h3>Your Learning Progress</h3>
               <Progress value={data.progress.percent} />
             </div>
             <div className="progress-stats">
               <div className="progress-stat">
                 <span className="progress-stat-value">{data.progress.attended}/{data.progress.totalSessions}</span>
                 <span className="progress-stat-label">Classes Attended</span>
+              </div>
+              <div className="progress-stat">
+                <span className="progress-stat-value">{data.progress.completedClasses}</span>
+                <span className="progress-stat-label">Completed Classes Attended</span>
               </div>
               <div className="progress-stat">
                 <span className="progress-stat-value">{data.progress.assignmentsDone}/{data.progress.totalAssignments}</span>
@@ -70,12 +69,16 @@ export default function StudentCourse() {
                 <span className="progress-stat-label">Time in Class</span>
               </div>
             </div>
+            <div className="row">
+              <b>Approved course completion: {data.approvedCourseCompletion}%</b>
+              <span className={data.approvedCourseCompletion === 100 ? 'pill ok' : 'pill wait'}>
+                {data.approvedCourseCompletion === 100 ? 'Course complete' : 'Awaiting admin approval'}
+              </span>
+            </div>
             <div className="certificate-section">
               {data.certificate
                 ? <button className="btn success" onClick={() => downloadCertificate(data.certificate.certId)}>Download Certificate ({data.certificate.certId})</button>
-                : data.progress.completed
-                  ? <button className="btn gold" onClick={getCert}>Generate My Certificate</button>
-                  : <p className="muted certificate-note">Your certificate unlocks at 100% completion.</p>}
+                : <p className="muted certificate-note">A certificate will be available here after an admin approves 100% course completion and generates it.</p>}
             </div>
           </div>
 

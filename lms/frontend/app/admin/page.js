@@ -28,7 +28,7 @@ export default function Admin() {
       </div>
       {dashboardErr && <p className="err">{dashboardErr}</p>}
       {tab === 'overview' && <Overview dashboard={dashboard} onNavigate={setTab} loading={loading} />}
-      {tab === 'students' && <Students students={dashboard?.students} loading={loading} />}
+      {tab === 'students' && <Students students={dashboard?.students} loading={loading} reload={loadDashboard} />}
       {tab === 'classes' && <Classes classes={dashboard?.classes} reload={loadDashboard} loading={loading} />}
       {tab === 'assignments' && <Assignments assignments={dashboard?.assignments} reload={loadDashboard} loading={loading} />}
       {tab === 'users' && <Users />}
@@ -94,7 +94,7 @@ function Overview({ dashboard, onNavigate, loading }) {
         </div>
       )}
 
-      <h2>Course completion</h2>
+      <h2>Admin-approved course completion</h2>
       <div className="scroll"><table>
         <thead><tr><th>Course</th><th>Trainer</th><th>Students</th><th>Completed</th></tr></thead>
         <tbody>
@@ -108,9 +108,12 @@ function Overview({ dashboard, onNavigate, loading }) {
   );
 }
 
-function Students({ students, loading }) {
+function Students({ students, loading, reload }) {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(null);
+  const [completionDrafts, setCompletionDrafts] = useState({});
+  const [actionMessage, setActionMessage] = useState('');
+  const [busyKey, setBusyKey] = useState('');
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 20px' }}>
@@ -120,8 +123,47 @@ function Students({ students, loading }) {
   }
   if (!students) return <p className="muted">Loading students…</p>;
   const visible = students.filter((student) => `${student.name} ${student.email} ${student.userId}`.toLowerCase().includes(query.toLowerCase()));
+  const saveCompletion = async (student, course) => {
+    const key = `${student._id}:${course._id}`;
+    const rawValue = completionDrafts[key] ?? course.approvedCourseCompletion;
+    const value = Number(rawValue);
+    if (rawValue === '' || !Number.isFinite(value) || value < 0 || value > 100) {
+      setActionMessage('Approved course completion must be a number from 0 to 100.');
+      return;
+    }
+    setBusyKey(key);
+    setActionMessage('');
+    try {
+      await api(`/admin/courses/${course._id}/students/${student._id}/completion`, {
+        method: 'PATCH',
+        body: { approvedCourseCompletion: value },
+      });
+      setCompletionDrafts((drafts) => ({ ...drafts, [key]: value }));
+      await reload();
+      setActionMessage(`Approved completion updated for ${student.name} · ${course.title}.`);
+    } catch (error) {
+      setActionMessage(error.message);
+    } finally {
+      setBusyKey('');
+    }
+  };
+  const generateCertificate = async (student, course) => {
+    const key = `${student._id}:${course._id}`;
+    setBusyKey(key);
+    setActionMessage('');
+    try {
+      await api(`/certificates/generate/${course._id}/${student._id}`, { method: 'POST' });
+      await reload();
+      setActionMessage(`Certificate generated for ${student.name} · ${course.title}.`);
+    } catch (error) {
+      setActionMessage(error.message);
+    } finally {
+      setBusyKey('');
+    }
+  };
   return (
     <>
+      {actionMessage && <p className="muted" role="status">{actionMessage}</p>}
       <div className="row" style={{ marginBottom: 10 }}>
         <h3 style={{ margin: 0 }}>All students ({students.length})</h3>
         <input aria-label="Search students" placeholder="Search name, email or ID" value={query} onChange={(e) => setQuery(e.target.value)} style={{ margin: 0, width: 260 }} />
@@ -136,15 +178,53 @@ function Students({ students, loading }) {
                 <td>{student.email}</td>
                 <td><span className={student.active ? 'pill ok' : 'pill off'}>{student.active ? 'Active' : 'Disabled'}</span></td>
                 <td>{student.courses.length}</td>
-                <td>{student.courses.filter((course) => course.completed).length} complete · {student.courses.filter((course) => !course.completed).length} in progress</td>
+                <td>{student.courses.filter((course) => course.approvedCourseCompletion === 100).length} approved complete · {student.courses.filter((course) => course.approvedCourseCompletion !== 100).length} in progress</td>
                 <td><button className="btn small ghost" onClick={() => setExpanded(expanded === student._id ? null : student._id)}>{expanded === student._id ? 'Hide details' : 'View details'}</button></td>
               </tr>
               {expanded === student._id && (
                 <tr><td colSpan="6">
                   {!student.courses.length ? <span className="muted">This student is not enrolled in any course.</span> : student.courses.map((course) => (
                     <section className="card" key={course._id}>
-                      <div className="row"><b>{course.title}</b><span className={course.completed ? 'pill ok' : 'pill wait'}>{course.percent}% · {course.completed ? 'Complete' : 'In progress'}</span></div>
-                      <p className="muted">Trainer: {course.trainer} · Classes attended: {course.attended}/{course.totalSessions} · Assignments complete: {course.assignmentsDone}/{course.totalAssignments}</p>
+                      <div className="row">
+                        <b>{course.title}</b>
+                        <span className={course.approvedCourseCompletion === 100 ? 'pill ok' : 'pill wait'}>
+                          {course.approvedCourseCompletion}% approved · {course.approvedCourseCompletion === 100 ? 'Course complete' : 'In progress'}
+                        </span>
+                      </div>
+                      <p className="muted">Trainer: {course.trainer} · Learning progress: {course.percent}% · Classes attended: {course.attended}/{course.totalSessions} · Completed classes attended: {course.completedClasses} · Assignments complete: {course.assignmentsDone}/{course.totalAssignments}</p>
+                      <div className="row">
+                        <label>
+                          Admin-approved completion
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            aria-label={`Approved completion for ${student.name} in ${course.title}`}
+                            value={completionDrafts[`${student._id}:${course._id}`] ?? course.approvedCourseCompletion}
+                            onChange={(event) => setCompletionDrafts((drafts) => ({
+                              ...drafts,
+                              [`${student._id}:${course._id}`]: event.target.value,
+                            }))}
+                            style={{ width: 120, margin: '0 8px' }}
+                          />
+                          %
+                        </label>
+                        <button
+                          className="btn small"
+                          disabled={busyKey === `${student._id}:${course._id}`}
+                          onClick={() => saveCompletion(student, course)}
+                        >Save approval</button>
+                        {course.certificate
+                          ? <span className="pill ok">Certificate issued · {course.certificate.certId}</span>
+                          : course.approvedCourseCompletion === 100
+                            ? <button
+                              className="btn small gold"
+                              disabled={busyKey === `${student._id}:${course._id}`}
+                              onClick={() => generateCertificate(student, course)}
+                            >Generate Certificate</button>
+                            : <span className="muted">Certificate not generated</span>}
+                      </div>
                       {!!course.assignmentStatuses.length && <div className="scroll"><table>
                         <thead><tr><th>Assignment</th><th>Status</th></tr></thead>
                         <tbody>{course.assignmentStatuses.map((assignment) => <tr key={assignment._id}><td>{assignment.title}</td><td>{assignment.status}</td></tr>)}</tbody>

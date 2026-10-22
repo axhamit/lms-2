@@ -61,8 +61,8 @@ export default function Student() {
         <div className="stat-card stat-card-success">
           <div className="stat-icon">✓</div>
           <div className="stat-content">
-            <div className="stat-value">{courses?.filter(c => c.progress.percent === 100).length || 0}</div>
-            <div className="stat-label">Completed</div>
+            <div className="stat-value">{courses?.filter(c => c.approvedCourseCompletion === 100).length || 0}</div>
+              <div className="stat-label">Courses approved complete</div>
           </div>
         </div>
         <div className="stat-card stat-card-accent">
@@ -81,11 +81,12 @@ export default function Student() {
           <Link key={c._id} href={`/student/courses/${c._id}`} className="card link course-card">
             <div className="course-card-header">
               <h3>{c.title}</h3>
-              <span className={`course-status ${c.progress.percent === 100 ? 'completed' : 'in-progress'}`}>
-                {c.progress.percent === 100 ? '✓ Completed' : `${c.progress.percent}%`}
+              <span className={`course-status ${c.approvedCourseCompletion === 100 ? 'completed' : 'in-progress'}`}>
+                {c.approvedCourseCompletion === 100 ? '✓ Course complete' : `${c.approvedCourseCompletion}% approved`}
               </span>
             </div>
             <p className="muted">Trainer: {c.trainer?.name || 'TBA'}</p>
+            <p className="muted">Learning progress: {c.progress.percent}% · Approved course completion: {c.approvedCourseCompletion}%</p>
             <Progress value={c.progress.percent} />
             <div className="course-stats">
               <div className="stat-item">
@@ -106,7 +107,7 @@ export default function Student() {
       </div>
 
       <h2 className="section-title">My Certificates</h2>
-      {!certs.length && <EmptyState icon="🎓" title="No certificates yet" description="Finish a course to unlock your certificate." />}
+      {!certs.length && <EmptyState icon="🎓" title="No certificates yet" description="Certificates appear here after an admin approves course completion and generates them." />}
       {certs.map((c) => (
         <div className="item certificate-item" key={c._id}>
           <div className="certificate-info">
