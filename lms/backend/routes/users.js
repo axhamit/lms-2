@@ -20,9 +20,18 @@ router.get('/', wrap(async (req, res) => {
   const limit = Math.min(100, parseInt(req.query.limit) || 25);
   const q = {};
   if (req.query.role) q.role = String(req.query.role);
+  if (req.query.active === 'true') q.active = true;
+  if (req.query.active === 'false') q.active = false;
   if (req.query.q) { const r = new RegExp(esc(String(req.query.q)), 'i'); q.$or = [{ name: r }, { email: r }, { userId: r }]; }
   const [items, total] = await Promise.all([User.find(q).sort('-createdAt').skip((page - 1) * limit).limit(limit), User.countDocuments(q)]);
   res.json({ items, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+}));
+
+router.get('/student-ids', wrap(async (req, res) => {
+  const q = { role: 'student', active: true };
+  if (req.query.q) { const r = new RegExp(esc(String(req.query.q)), 'i'); q.$or = [{ name: r }, { email: r }, { userId: r }]; }
+  const students = await User.find(q).select('_id').lean();
+  res.json(students.map((student) => String(student._id)));
 }));
 
 // Dropdown lists for course forms (id + name only)

@@ -636,6 +636,61 @@ th {
 tbody tr { transition: background var(--dur) var(--ease); }
 tbody tr:hover { background: var(--surface-2); }
 
+.student-picker {
+  align-self: stretch;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.student-picker-header,
+.student-picker-tools,
+.student-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.student-picker-header { margin-bottom: 12px; }
+.student-picker-header h4 { margin: 0; font-size: 17px; }
+.student-picker-header p { margin: 2px 0 0; }
+.student-picker-tools { margin-bottom: 12px; }
+.student-picker-tools input { flex: 1; min-width: 220px; margin: 0; }
+.student-picker-tools .btn { flex-shrink: 0; }
+.student-picker-table {
+  max-height: 380px;
+  overflow: auto;
+}
+.student-picker-table table { min-width: 650px; }
+.student-picker-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.student-picker-table th:first-child,
+.student-picker-table td:first-child { width: 42px; text-align: center; }
+.student-picker-table input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--primary);
+  vertical-align: middle;
+  cursor: pointer;
+}
+.student-picker-footer { margin-top: 12px; }
+.student-picker-selected { margin-top: 12px; }
+.student-picker-selected summary {
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+.student-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
 /* ============================================================
    PILLS & TAGS
    ============================================================ */
@@ -1599,6 +1654,12 @@ tbody tr:hover { background: var(--surface-2); }
   .btn.small { width: auto; }
   .acts { justify-content: flex-start; }
   .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .student-picker { padding: 12px; }
+  .student-picker-tools,
+  .student-picker-footer { align-items: stretch; flex-direction: column; }
+  .student-picker-tools input { min-width: 0; }
+  .student-picker-tools .btn { width: 100%; }
+  .student-picker-header { align-items: flex-start; }
   table { font-size: 12px; }
   th, td { padding: 8px 10px; }
   .stat-card { padding: 20px; }

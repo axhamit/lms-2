@@ -115,9 +115,9 @@ router.delete('/:id', allow('admin'), wrap(async (req, res) => {
 }));
 
 /* ================= LIVE CLASSES ================= */
-router.post('/:id/sessions', allow('trainer', 'admin'), wrap(async (req, res) => {
+router.post('/:id/sessions', allow('admin'), wrap(async (req, res) => {
   const c = await Course.findById(req.params.id);
-  if (!c || !isOwner(req.user, c)) return bad(res, 'Not your course', 403);
+  if (!c) return bad(res, 'Course not found', 404);
   const { title, startTime, durationMinutes = 60, provider = 'jitsi', meetingLink } = req.body;
   const start = new Date(startTime);
   const dur = Number(durationMinutes);

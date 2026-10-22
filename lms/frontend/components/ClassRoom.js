@@ -21,9 +21,11 @@ export default function ClassRoom({ sessionId, role }) {
   const { user } = useAuth();
   const router = useRouter();
   const box = useRef(null);
+  const jitsiRef = useRef(null);
   const [info, setInfo] = useState(null);
   const [err, setErr] = useState('');
   const [inRoom, setInRoom] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
 
   useEffect(() => {
     let dead = false, timer = null, jitsi = null, tracking = false;
@@ -51,17 +53,22 @@ export default function ClassRoom({ sessionId, role }) {
           userInfo: { displayName: user.name, email: user.email },
           configOverwrite: { prejoinPageEnabled: false, disableDeepLinking: true },
         });
+        jitsiRef.current = jitsi;
         jitsi.addListener('videoConferenceJoined', () => {
           setInRoom(true);
           if (role === 'student' && !tracking) { tracking = true; beat(); timer = setInterval(beat, 20000); }
         });
+        jitsi.addListener('audioMuteStatusChanged', ({ muted }) => setMicMuted(muted));
         jitsi.addListener('videoConferenceLeft', () => { setInRoom(false); stopTracking(); });
         jitsi.addListener('readyToClose', () => { stopTracking(); router.push('/' + role); });
       } catch (e) { if (!dead) setErr(e.message); }
     })();
 
-    return () => { dead = true; window.removeEventListener('pagehide', stopTracking); stopTracking(); jitsi?.dispose(); };
+    return () => { dead = true; window.removeEventListener('pagehide', stopTracking); stopTracking(); jitsiRef.current = null; jitsi?.dispose(); };
   }, [sessionId]); // eslint-disable-line
+
+  const toggleMic = () => jitsiRef.current?.executeCommand('toggleAudio');
+  const muteEveryone = () => jitsiRef.current?.executeCommand('muteEveryone');
 
   return (
     <div>
@@ -74,6 +81,13 @@ export default function ClassRoom({ sessionId, role }) {
       </div>
 
       {role === 'student' && <p className="notice">Your time in this class is recorded for attendance{inRoom ? ' — you are in the room now' : ''}. The trainer may record the session.</p>}
+      {role === 'trainer' && info?.provider === 'jitsi' && inRoom && (
+        <div className="acts" style={{ margin: '12px 0' }}>
+          <button className="btn small ghost" onClick={toggleMic}>{micMuted ? 'Turn microphone on' : 'Turn microphone off'}</button>
+          <button className="btn small danger" onClick={muteEveryone}>Mute all participants</button>
+          <span className="muted">Participants can unmute themselves afterward.</span>
+        </div>
+      )}
       {role !== 'student' && info?.provider === 'jitsi' && <Recorder sessionId={sessionId} />}
       {err && <p className="err">{err}</p>}
       {info?.provider === 'external' && <p className="notice">This class runs on an external meeting link. It opened in a new tab. <a href={info.meetingLink} target="_blank" rel="noreferrer">Open it again</a>.</p>}

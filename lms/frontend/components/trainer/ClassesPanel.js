@@ -5,24 +5,10 @@ import { api, fmt, uploadFile } from '../../lib/api';
 import { StatusTag } from '../ui';
 import Recordings from '../Recordings';
 
-const blank = { title: '', startTime: '', durationMinutes: 60, provider: 'jitsi', meetingLink: '' };
-const randomRoom = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
-
 export default function ClassesPanel({ courseId, sessions, reload }) {
   const router = useRouter();
-  const [f, setF] = useState(blank);
-  const [err, setErr] = useState('');
   const [openAtt, setOpenAtt] = useState(null);
   const [busy, setBusy] = useState('');
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-
-  const add = async (e) => {
-    e.preventDefault(); setErr('');
-    try {
-      await api(`/courses/${courseId}/sessions`, { method: 'POST', body: { ...f, startTime: new Date(f.startTime).toISOString(), durationMinutes: Number(f.durationMinutes) } });
-      setF(blank); reload();
-    } catch (x) { setErr(x.message); }
-  };
   const enter = (s) => (s.provider === 'external' ? window.open(s.meetingLink, '_blank') : router.push(`/trainer/classes/${s._id}`));
   const del = async (s) => { if (confirm(`Delete "${s.title}" and its attendance and recordings?`)) { await api(`/courses/sessions/${s._id}`, { method: 'DELETE' }); reload(); } };
   const uploadRec = async (s, file) => {
@@ -38,25 +24,6 @@ export default function ClassesPanel({ courseId, sessions, reload }) {
 
   return (
     <section>
-      <form className="card grid" onSubmit={add}>
-        <h3>Schedule a class</h3>
-        <input placeholder="Class title" value={f.title} onChange={set('title')} required />
-        <input type="datetime-local" value={f.startTime} onChange={set('startTime')} required />
-        <input type="number" min="5" max="480" value={f.durationMinutes} onChange={set('durationMinutes')} title="Duration in minutes" placeholder="Minutes" required />
-        <select value={f.provider} onChange={set('provider')}>
-          <option value="jitsi">Video room inside this portal (tracks time)</option>
-          <option value="external">External link (Zoom / Meet / Teams)</option>
-        </select>
-        {f.provider === 'external' && (
-          <div className="full row">
-            <input placeholder="https://…" value={f.meetingLink} onChange={set('meetingLink')} required />
-            <button type="button" className="btn ghost small" onClick={() => setF({ ...f, meetingLink: 'https://meet.jit.si/lms-' + randomRoom() })}>Generate Jitsi link</button>
-          </div>
-        )}
-        <button className="btn">Schedule class</button>
-        {err && <p className="err">{err}</p>}
-      </form>
-
       {sessions.map((s) => (
         <div className="card" key={s._id}>
           {s.status === 'completed' && !s.recordings?.length && (
@@ -86,7 +53,7 @@ export default function ClassesPanel({ courseId, sessions, reload }) {
           <Recordings sessionId={s._id} recordings={s.recordings} canDelete onChanged={reload} />
         </div>
       ))}
-      {!sessions.length && <p className="muted">No classes scheduled yet. Use the form above.</p>}
+      {!sessions.length && <p className="muted">No classes scheduled yet. Ask your admin to schedule one.</p>}
     </section>
   );
 }

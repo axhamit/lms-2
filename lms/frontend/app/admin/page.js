@@ -164,6 +164,24 @@ function Students({ students, loading }) {
 
 function Classes({ classes, reload, loading }) {
   const [err, setErr] = useState('');
+  const [scheduleErr, setScheduleErr] = useState('');
+  const [courses, setCourses] = useState(null);
+  const [f, setF] = useState({ courseId: '', title: '', startTime: '', durationMinutes: 60, provider: 'jitsi', meetingLink: '' });
+  useEffect(() => {
+    api('/courses').then(setCourses).catch((e) => setScheduleErr(e.message));
+  }, []);
+  const schedule = async (e) => {
+    e.preventDefault();
+    setScheduleErr('');
+    try {
+      await api(`/courses/${f.courseId}/sessions`, {
+        method: 'POST',
+        body: { ...f, startTime: new Date(f.startTime).toISOString(), durationMinutes: Number(f.durationMinutes) },
+      });
+      setF({ courseId: '', title: '', startTime: '', durationMinutes: 60, provider: 'jitsi', meetingLink: '' });
+      await reload();
+    } catch (x) { setScheduleErr(x.message); }
+  };
   const del = async (session) => {
     if (!confirm(`Delete class "${session.title}"? Attendance and its recordings will also be removed.`)) return;
     setErr('');
@@ -185,6 +203,26 @@ function Classes({ classes, reload, loading }) {
 
   return (
     <>
+      <form className="card grid" onSubmit={schedule}>
+        <h3>Schedule a class</h3>
+        <select value={f.courseId} onChange={(e) => setF({ ...f, courseId: e.target.value })} required>
+          <option value="">Choose course</option>
+          {courses?.map((course) => <option key={course._id} value={course._id}>{course.title}</option>)}
+        </select>
+        <input placeholder="Class title" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} required />
+        <input type="datetime-local" value={f.startTime} onChange={(e) => setF({ ...f, startTime: e.target.value })} required />
+        <input type="number" min="5" max="480" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} title="Duration in minutes" placeholder="Minutes" required />
+        <select value={f.provider} onChange={(e) => setF({ ...f, provider: e.target.value })}>
+          <option value="jitsi">Video room inside this portal (tracks time)</option>
+          <option value="external">External link (Zoom / Meet / Teams)</option>
+        </select>
+        {f.provider === 'external' && (
+          <input className="full" placeholder="https://…" value={f.meetingLink} onChange={(e) => setF({ ...f, meetingLink: e.target.value })} required />
+        )}
+        <button className="btn" disabled={!courses?.length}>Schedule class</button>
+        {scheduleErr && <p className="err">{scheduleErr}</p>}
+        {courses && !courses.length && !scheduleErr && <p className="muted">Create a course before scheduling a class.</p>}
+      </form>
       <h3>All scheduled classes ({classes.length})</h3>
       {classesWithoutRecordings.length > 0 && (
         <div className="card" style={{ borderColor: 'var(--gold)', background: 'var(--gold-2)', marginBottom: 16 }}>
@@ -350,25 +388,74 @@ function Courses() {
   const empty = { title: '', description: '', trainer: '', students: [] };
   const [courses, setCourses] = useState([]);
   const [trainers, setTrainers] = useState([]);
-  const [students, setStudents] = useState([]);
   const [f, setF] = useState(empty);
   const [editing, setEditing] = useState(null);
   const [err, setErr] = useState('');
+  const [studentQuery, setStudentQuery] = useState('');
+  const [studentPage, setStudentPage] = useState(1);
+  const [studentData, setStudentData] = useState(null);
+  const [studentLoading, setStudentLoading] = useState(true);
+  const [studentErr, setStudentErr] = useState('');
+  const [selectingAll, setSelectingAll] = useState(false);
+  const [selectedStudentDetails, setSelectedStudentDetails] = useState({});
+  const pageSize = 50;
 
   const load = () => api('/courses').then(setCourses);
-  useEffect(() => { load(); api('/users/options?role=trainer').then(setTrainers); api('/users/options?role=student').then(setStudents); }, []);
+  useEffect(() => { load(); api('/users/options?role=trainer').then(setTrainers); }, []);
+  useEffect(() => {
+    let current = true;
+    const timer = setTimeout(() => {
+      setStudentLoading(true);
+      setStudentErr('');
+      api(`/users?role=student&active=true&q=${encodeURIComponent(studentQuery)}&page=${studentPage}&limit=${pageSize}`)
+        .then((data) => {
+          if (current) {
+            setStudentData(data);
+            setSelectedStudentDetails((previous) => ({
+              ...previous,
+              ...Object.fromEntries(data.items.map((student) => [student._id, student])),
+            }));
+          }
+        })
+        .catch((e) => { if (current) setStudentErr(e.message); })
+        .finally(() => { if (current) setStudentLoading(false); });
+    }, studentQuery ? 250 : 0);
+    return () => { current = false; clearTimeout(timer); };
+  }, [studentQuery, studentPage]);
+
+  const setStudentSelection = (ids, selected) => {
+    setF((current) => {
+      const next = new Set(current.students);
+      ids.forEach((id) => selected ? next.add(id) : next.delete(id));
+      return { ...current, students: Array.from(next) };
+    });
+  };
+  const selectAllMatching = async () => {
+    setSelectingAll(true);
+    setStudentErr('');
+    try {
+      const ids = await api(`/users/student-ids?q=${encodeURIComponent(studentQuery)}`);
+      setF((current) => ({ ...current, students: Array.from(new Set([...current.students, ...ids])) }));
+    } catch (e) { setStudentErr(e.message); }
+    finally { setSelectingAll(false); }
+  };
 
   const save = async (e) => {
     e.preventDefault(); setErr('');
-    try { await api(editing ? `/courses/${editing}` : '/courses', { method: editing ? 'PATCH' : 'POST', body: f }); setF(empty); setEditing(null); load(); }
+    try { await api(editing ? `/courses/${editing}` : '/courses', { method: editing ? 'PATCH' : 'POST', body: f }); setF(empty); setEditing(null); setSelectedStudentDetails({}); load(); }
     catch (x) { setErr(x.message); }
   };
   const edit = (c) => {
     setEditing(c._id);
     setF({ title: c.title, description: c.description || '', trainer: c.trainer?._id || '', students: c.students.map((s) => s._id) });
+    setSelectedStudentDetails(Object.fromEntries(c.students.map((student) => [student._id, student])));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  const cancelEdit = () => { setEditing(null); setF(empty); setSelectedStudentDetails({}); };
   const del = async (c) => { if (confirm(`Delete "${c.title}" with all its classes, assignments, files and certificates?`)) { await api(`/courses/${c._id}`, { method: 'DELETE' }); load(); } };
+  const visibleStudents = studentData?.items || [];
+  const selectedIds = new Set(f.students);
+  const allVisibleSelected = visibleStudents.length > 0 && visibleStudents.every((student) => selectedIds.has(student._id));
 
   return (
     <>
@@ -380,14 +467,73 @@ function Courses() {
           <option value="">Choose trainer</option>
           {trainers.map((t) => <option key={t._id} value={t._id}>{t.name} ({t.userId})</option>)}
         </select>
-        <label className="full">Students in this course (hold Ctrl / Cmd to pick several)
-          <select multiple size="7" value={f.students} onChange={(e) => setF({ ...f, students: Array.from(e.target.selectedOptions, (o) => o.value) })}>
-            {students.map((s) => <option key={s._id} value={s._id}>{s.name} ({s.userId})</option>)}
-          </select>
-        </label>
+        <section className="full student-picker" aria-label="Select course students">
+          <div className="student-picker-header">
+            <div>
+              <h4>Students</h4>
+              <p className="muted">{f.students.length.toLocaleString()} selected for this course</p>
+            </div>
+            <button type="button" className="btn small ghost" disabled={!f.students.length} onClick={() => setF({ ...f, students: [] })}>Clear selection</button>
+          </div>
+          <div className="student-picker-tools">
+            <input
+              type="search"
+              aria-label="Search active students"
+              placeholder="Search students by name, email or ID"
+              value={studentQuery}
+              onChange={(e) => { setStudentQuery(e.target.value); setStudentPage(1); }}
+            />
+            <button type="button" className="btn small ghost" disabled={selectingAll || !studentData?.total} onClick={selectAllMatching}>
+              {selectingAll ? 'Adding students…' : `Add all ${studentData?.total?.toLocaleString() || 0} matching`}
+            </button>
+          </div>
+          <div className="scroll student-picker-table">
+            <table>
+              <thead><tr>
+                <th><input type="checkbox" aria-label="Select all students on this page" checked={allVisibleSelected} disabled={!visibleStudents.length || studentLoading} onChange={(e) => setStudentSelection(visibleStudents.map((student) => student._id), e.target.checked)} /></th>
+                <th>Student ID</th><th>Name</th><th>Email</th><th>Course selection</th>
+              </tr></thead>
+              <tbody>
+                {visibleStudents.map((student) => (
+                  <tr key={student._id}>
+                    <td><input type="checkbox" aria-label={`Select ${student.name}`} checked={selectedIds.has(student._id)} onChange={(e) => setStudentSelection([student._id], e.target.checked)} /></td>
+                    <td><b>{student.userId}</b></td>
+                    <td>{student.name}</td>
+                    <td>{student.email}</td>
+                    <td><button type="button" className={`btn small ${selectedIds.has(student._id) ? 'ghost' : ''}`} onClick={() => setStudentSelection([student._id], !selectedIds.has(student._id))}>{selectedIds.has(student._id) ? 'Remove' : 'Add'}</button></td>
+                  </tr>
+                ))}
+                {!studentLoading && !visibleStudents.length && <tr><td colSpan="5" className="muted">No active students match this search.</td></tr>}
+                {studentLoading && <tr><td colSpan="5" className="muted">Loading students…</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          {studentErr && <p className="err" role="alert">{studentErr}</p>}
+          <div className="student-picker-footer">
+            <span className="muted">
+              {studentData ? `${studentData.total.toLocaleString()} active students · Page ${studentData.page} of ${studentData.pages}` : 'Loading student list…'}
+            </span>
+            <div className="acts">
+              <button type="button" className="btn small ghost" disabled={studentLoading || studentPage <= 1} onClick={() => setStudentPage((page) => page - 1)}>Previous</button>
+              <button type="button" className="btn small ghost" disabled={studentLoading || !studentData || studentPage >= studentData.pages} onClick={() => setStudentPage((page) => page + 1)}>Next</button>
+            </div>
+          </div>
+          {!!f.students.length && (
+            <details className="student-picker-selected">
+              <summary>View selected students ({f.students.length.toLocaleString()})</summary>
+              <div className="student-picker-chips">
+                {f.students.slice(0, 100).map((id) => {
+                  const student = selectedStudentDetails[id];
+                  return <span className="pill off" key={id}>{student ? `${student.name} (${student.userId})` : id}</span>;
+                })}
+                {f.students.length > 100 && <span className="muted">and {(f.students.length - 100).toLocaleString()} more</span>}
+              </div>
+            </details>
+          )}
+        </section>
         <div className="acts">
           <button className="btn">{editing ? 'Save changes' : 'Create course'}</button>
-          {editing && <button type="button" className="btn ghost" onClick={() => { setEditing(null); setF(empty); }}>Cancel</button>}
+          {editing && <button type="button" className="btn ghost" onClick={cancelEdit}>Cancel</button>}
         </div>
         {err && <p className="err">{err}</p>}
       </form>
